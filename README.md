@@ -1,0 +1,33 @@
+# OneStop Go SDK
+
+Go client for the [OneStop Antibot](https://onestopantibot.com) API. The SDK calls `/generate` and returns typed results; your application fetches the target pages and scripts and sends the generated payloads.
+
+## Install
+
+```sh
+go get github.com/Onestopapi/onestop-golang-sdk/onestop
+```
+
+Requires Go 1.25+.
+
+## Quick start
+
+```go
+client, err := onestop.New(onestop.Config{
+	APIKey:     "YOUR_API_KEY",
+	Identifier: "", // your identifier or account name
+})
+if err != nil {
+	log.Fatal(err)
+}
+ip, err := client.GetIP() // set Config.IPHTTPClient to your proxy so this is the proxy's IP
+session := client.Session(onestop.Session{
+	Site: pageURL, Referer: pageURL, UserAgent: userAgent, AcceptLanguage: "en-US,en;q=0.9", IP: ip,
+})
+res, err := session.AkamaiSensor(onestop.AkamaiSensorCall{Abck: abck, Bmsz: bmsz, Script: script, ScriptURL: scriptURL})
+// POST res.Payload as sensor_data; send res.Context on the next call.
+```
+
+See [examples/](examples) for full flows per product and TLS client.
+
+Documentation: [onestopantibot.com/dashboard/docs](https://onestopantibot.com/dashboard/docs)
