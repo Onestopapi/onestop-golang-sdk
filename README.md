@@ -8,7 +8,7 @@ Go client for the [OneStop Antibot](https://onestopantibot.com) API. The SDK cal
 go get github.com/Onestopapi/onestop-golang-sdk/onestop
 ```
 
-Requires Go 1.25+.
+Requires Go 1.25+. Reference: [pkg.go.dev](https://pkg.go.dev/github.com/Onestopapi/onestop-golang-sdk/onestop).
 
 ## Quick start
 
