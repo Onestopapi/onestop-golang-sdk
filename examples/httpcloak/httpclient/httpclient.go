@@ -145,7 +145,7 @@ func (c *Client) SetCookie(domain, name, value string) {
 	c.session.SetCookie(httpcloak.CookieInfo{Name: name, Value: value, Domain: domain, Path: "/"})
 }
 
-// Chrome 154 on Windows. Every header set below is in Chrome's order.
+// Chrome 154 on Windows. Every header set below is in Chrome's order; check them against your browser on your site.
 const (
 	UserAgent      = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36"
 	secChUa        = `"Chromium";v="154", "Google Chrome";v="154", "Not A(Brand";v="99"`

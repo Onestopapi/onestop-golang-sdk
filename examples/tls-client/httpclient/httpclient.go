@@ -150,7 +150,7 @@ func (c *Client) SetCookie(domain, name, value string) {
 	c.client.SetCookies(u, []*fhttp.Cookie{{Name: name, Value: value, Domain: domain, Path: "/"}})
 }
 
-// Chrome 152 on Windows. Every header set below is in Chrome's order.
+// Chrome 152 on Windows. Every header set below is in Chrome's order; check them against your browser on your site.
 const (
 	UserAgent      = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
 	secChUa        = `"Chromium";v="152", "Not?A_Brand";v="24", "Google Chrome";v="152"`

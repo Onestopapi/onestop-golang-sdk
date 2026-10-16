@@ -4,7 +4,22 @@ Guidance for AI coding assistants using the OneStop Antibot SDK. Working program
 
 ## Rules
 
-1. **Headers and header order matter.** Send exactly the headers a real browser sends for each request type (page, script, XHR/POST), in the same order. Don't let your HTTP client add, drop or reorder headers. The examples show the order for each request (`examples/<client>/httpclient/httpclient.go`).
+1. **Headers and header order matter.** Send the headers a real browser sends for each request type (page, script, XHR/POST), in the same order. Check them against your browser on your site, and set the order explicitly so your HTTP client doesn't add, drop or reorder headers. The examples' header sets are in `examples/<client>/httpclient/httpclient.go`; its `Do` sets the order like this:
+
+   ```go
+   // tls-client
+   req.Header = fhttp.Header{
+       "user-agent":         {userAgent},
+       "accept":             {"*/*"},
+       fhttp.HeaderOrderKey: {"user-agent", "accept"},
+   }
+
+   // httpcloak
+   req := &httpcloak.Request{Method: "GET", URL: pageURL,
+       Headers:     map[string][]string{"user-agent": {userAgent}, "accept": {"*/*"}},
+       HeaderOrder: []string{"user-agent", "accept"},
+   }
+   ```
 2. **Match the site's region.** Use a proxy in the site's country and an `AcceptLanguage` for that country, the way an ordinary visitor would. A `.de` site gets a German proxy and `de-DE,de;q=0.9`.
 3. **`sec-ch-ua` headers must be accurate.** When you present as Chromium, `sec-ch-ua`, `sec-ch-ua-mobile`, `sec-ch-ua-platform` (and the full-version hints when sent) must match the User-Agent's browser, version and platform exactly.
 4. **One identity per session.** Create one `client.Session(onestop.Session{...})` per browser identity. Use the same `UserAgent`, `AcceptLanguage`, `Site` and `Referer` for every call in it. Set `IP` to the proxy's exit IP (`client.GetIP()` with `Config.IPHTTPClient` going through the same proxy).

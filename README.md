@@ -28,6 +28,25 @@ res, err := session.AkamaiSensor(onestop.AkamaiSensorCall{Abck: abck, Bmsz: bmsz
 // POST res.Payload as sensor_data; send res.Context on the next call.
 ```
 
+## Header order
+
+Sites check header names and their order. Send the headers your browser sends, in its order, and set the order explicitly in your TLS client:
+
+```go
+// tls-client
+req.Header = fhttp.Header{
+	"user-agent":         {userAgent},
+	"accept":             {"*/*"},
+	fhttp.HeaderOrderKey: {"user-agent", "accept"},
+}
+
+// httpcloak
+req := &httpcloak.Request{Method: "GET", URL: pageURL,
+	Headers:     map[string][]string{"user-agent": {userAgent}, "accept": {"*/*"}},
+	HeaderOrder: []string{"user-agent", "accept"},
+}
+```
+
 See [examples/](examples) for full flows per product and TLS client.
 
 Documentation: [onestopantibot.com/dashboard/docs](https://onestopantibot.com/dashboard/docs)
