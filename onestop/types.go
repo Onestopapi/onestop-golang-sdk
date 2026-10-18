@@ -150,6 +150,12 @@ type KasadaResponse struct {
 	Meta
 }
 
+// ImpervaResponse holds the reese84 POST body (JSON text); send it as is.
+type ImpervaResponse struct {
+	Payload string `json:"payload"`
+	Meta
+}
+
 // Meta is embedded in every result. RequestID identifies the call for support.
 // Sleep is the wait in milliseconds the API asked for; the SDK has already
 // waited it before returning the result.

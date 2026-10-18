@@ -1,5 +1,5 @@
-// Cloudflare Turnstile: load the widget's api.js and its iframe, then send
-// the requests each step returns until the API returns the token.
+// Cloudflare Turnstile: load the page, the widget's api.js and its iframe,
+// then send the requests each step returns until the API returns the token.
 package main
 
 import (
@@ -17,7 +17,7 @@ import (
 
 const (
 	apiKey         = "YOUR_API_KEY"
-	identifier     = "" // your identifier or account name
+	identifier     = "YOUR_IDENTIFIER" // your identifier or account name
 	pageURL        = "https://www.example.com/event"
 	siteKey        = "YOUR_TURNSTILE_SITE_KEY" // from the page's turnstile.render options
 	action         = "YOUR_TURNSTILE_ACTION"
@@ -30,9 +30,10 @@ const (
 func main() {
 	hc := httpclient.New(proxy)
 	client, ip := newClient()
-	session := newSession(client, ip, pageURL)
-	first := getChallengePage(hc)
-	token := runChallengeLoop(hc, session, first)
+	page := getPage(hc)
+	session := newSession(client, ip, page.URL)
+	first := getChallengePage(hc, page)
+	token := runChallengeLoop(hc, session, page, first)
 	siteFirewall(hc, pageURL, token)
 	fmt.Println("PASS Turnstile token returned")
 }
@@ -63,11 +64,15 @@ func newSession(client *onestop.Client, ip, site string) onestop.Session {
 	})
 }
 
+func getPage(hc *httpclient.Client) *httpclient.Response {
+	return hc.Get(pageURL, httpclient.Navigate(acceptLanguage, ""))
+}
+
 // getChallengePage returns the first call: the widget iframe, its final URL
 // and its cf-ray header.
-func getChallengePage(hc *httpclient.Client) onestop.CloudflareCall {
-	page, _ := url.Parse(pageURL)
-	api := hc.Get("https://challenges.cloudflare.com/turnstile/v0/api.js", httpclient.Script(acceptLanguage, "cross-site", page.Scheme+"://"+page.Host+"/").StorageAccess())
+func getChallengePage(hc *httpclient.Client, page *httpclient.Response) onestop.CloudflareCall {
+	u, _ := url.Parse(page.URL)
+	api := hc.Get("https://challenges.cloudflare.com/turnstile/v0/api.js", httpclient.Script(acceptLanguage, "cross-site", u.Scheme+"://"+u.Host+"/").StorageAccess())
 	// api.js redirects to /turnstile/v0/<mode>/<version>/api.js.
 	apiURL, _ := url.Parse(api.URL)
 	segments := strings.Split(apiURL.Path, "/")
@@ -97,13 +102,13 @@ func getChallengePage(hc *httpclient.Client) onestop.CloudflareCall {
 
 // runChallengeLoop sends each step's requests; each reply goes back on the
 // next call, by its purpose, until the API returns the token.
-func runChallengeLoop(hc *httpclient.Client, session onestop.Session, call onestop.CloudflareCall) string {
+func runChallengeLoop(hc *httpclient.Client, session onestop.Session, page *httpclient.Response, call onestop.CloudflareCall) string {
 	frameURL := call.IframeURL
 	step, err := session.CloudflareTurnstile(call)
 	for err == nil && step.Token == "" {
 		next := onestop.CloudflareCall{Context: step.Context, Action: action, CData: cData}
 		for _, r := range step.Requests {
-			res := hc.Do(r.Method, r.URL, httpclient.Cloudflare(r, acceptLanguage, pageURL, frameURL), r.Body)
+			res := hc.Do(r.Method, r.URL, httpclient.Cloudflare(r, acceptLanguage, page.URL, frameURL), r.Body)
 			switch r.Purpose {
 			case "challenge":
 				if res.Status != 200 {

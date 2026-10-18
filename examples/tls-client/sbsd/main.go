@@ -17,7 +17,7 @@ import (
 
 const (
 	apiKey         = "YOUR_API_KEY"
-	identifier     = "" // your identifier or account name
+	identifier     = "YOUR_IDENTIFIER" // your identifier or account name
 	pageURL        = "https://www.example.com/"
 	acceptLanguage = "de-DE,de;q=0.9"
 

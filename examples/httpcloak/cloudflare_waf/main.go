@@ -16,7 +16,7 @@ import (
 
 const (
 	apiKey         = "YOUR_API_KEY"
-	identifier     = "" // your identifier or account name
+	identifier     = "YOUR_IDENTIFIER" // your identifier or account name
 	pageURL        = "https://www.example.com/login"
 	acceptLanguage = "en-US,en;q=0.9"
 
@@ -31,9 +31,9 @@ var (
 func main() {
 	hc := httpclient.New(proxy)
 	client, ip := newClient()
-	session := newSession(client, ip, pageURL)
-	first := getChallengePage(hc)
-	runChallengeLoop(hc, session, first)
+	page, first := getChallengePage(hc)
+	session := newSession(client, ip, page.URL)
+	runChallengeLoop(hc, session, page, first)
 	siteFirewall(hc, pageURL)
 	fmt.Println("PASS cf_clearance set")
 }
@@ -64,8 +64,9 @@ func newSession(client *onestop.Client, ip, site string) onestop.Session {
 	})
 }
 
-// getChallengePage returns the first call: the challenge page and its script.
-func getChallengePage(hc *httpclient.Client) onestop.CloudflareCall {
+// getChallengePage returns the page and the first call: the challenge page
+// and its script.
+func getChallengePage(hc *httpclient.Client) (*httpclient.Response, onestop.CloudflareCall) {
 	page := hc.Get(pageURL, httpclient.Navigate(acceptLanguage, ""))
 	// The challenge page has the script path (src = '...') and the
 	// __cf_chl_rt_tk token.
@@ -75,13 +76,13 @@ func getChallengePage(hc *httpclient.Client) onestop.CloudflareCall {
 		log.Fatalf("FAIL page returned %d without a Cloudflare challenge", page.Status)
 	}
 	scriptURL := page.Resolve(scriptMatch[1]).String()
-	script := hc.Get(scriptURL, httpclient.ChallengeScript(acceptLanguage, pageURL+"?__cf_chl_rt_tk="+tokenMatch[1]))
-	return onestop.CloudflareCall{HTML: page.Body, Script: script.Body, ScriptURL: scriptURL}
+	script := hc.Get(scriptURL, httpclient.ChallengeScript(acceptLanguage, page.URL+"?__cf_chl_rt_tk="+tokenMatch[1]))
+	return page, onestop.CloudflareCall{HTML: page.Body, Script: script.Body, ScriptURL: scriptURL}
 }
 
 // runChallengeLoop sends each step's requests; each reply goes back on the
 // next call, by its purpose. The form POST sets cf_clearance.
-func runChallengeLoop(hc *httpclient.Client, session onestop.Session, call onestop.CloudflareCall) {
+func runChallengeLoop(hc *httpclient.Client, session onestop.Session, page *httpclient.Response, call onestop.CloudflareCall) {
 	step, err := session.CloudflareWaf(call)
 	frameURL := ""
 	for err == nil && step.Token == "" {
@@ -90,7 +91,7 @@ func runChallengeLoop(hc *httpclient.Client, session onestop.Session, call onest
 			if r.Purpose == "form" {
 				hc.FollowRedirects(false)
 			}
-			res := hc.Do(r.Method, r.URL, httpclient.Cloudflare(r, acceptLanguage, pageURL, frameURL), r.Body)
+			res := hc.Do(r.Method, r.URL, httpclient.Cloudflare(r, acceptLanguage, page.URL, frameURL), r.Body)
 			switch r.Purpose {
 			case "challenge":
 				if res.Status != 200 {
@@ -111,7 +112,7 @@ func runChallengeLoop(hc *httpclient.Client, session onestop.Session, call onest
 			case "pat":
 				next.PatStatus = onestop.Ptr(res.Status) // a 4xx is normal
 			case "form":
-				if hc.Cookie(pageURL, "cf_clearance") == "" {
+				if hc.Cookie(page.URL, "cf_clearance") == "" {
 					log.Fatalf("FAIL form POST returned %d without cf_clearance", res.Status)
 				}
 				return

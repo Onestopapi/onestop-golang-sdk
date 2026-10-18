@@ -88,3 +88,8 @@ func (s Session) KasadaPScript(script string) (*KasadaPScriptResponse, error) {
 func (s Session) KasadaTL(scriptURL, script string) (*KasadaResponse, error) {
 	return generate[KasadaResponse](s, "Kasada", "kasada", kasadaTLWire{s.refererIdentity(), scriptURL, script})
 }
+
+// Imperva generates the reese84 POST body from the challenge script's URL and raw source.
+func (s Session) Imperva(scriptURL, script string) (*ImpervaResponse, error) {
+	return generate[ImpervaResponse](s, "Imperva", "imperva", impervaWire{s.datadomeIdentity(), scriptURL, script})
+}

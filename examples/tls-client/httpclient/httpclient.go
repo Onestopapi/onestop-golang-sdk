@@ -1,3 +1,5 @@
+// Header sets and order here come from one Chrome recording; copy yours from a browser recording of each request you make.
+
 // Package httpclient sends the examples' target requests with
 // github.com/bogdanfinn/tls-client (Chrome TLS and HTTP/2 fingerprint, one
 // cookie jar) and holds Chrome's headers for each kind of request.
@@ -150,15 +152,15 @@ func (c *Client) SetCookie(domain, name, value string) {
 	c.client.SetCookies(u, []*fhttp.Cookie{{Name: name, Value: value, Domain: domain, Path: "/"}})
 }
 
-// Chrome 152 on Windows. Every header set below is in Chrome's order; check them against your browser on your site.
+// Chrome 155 on Windows.
 const (
-	UserAgent      = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
-	secChUa        = `"Chromium";v="152", "Not?A_Brand";v="24", "Google Chrome";v="152"`
-	secChUaFull    = `"Chromium";v="152.0.7977.64", "Not?A_Brand";v="24.0.0.0", "Google Chrome";v="152.0.7977.64"`
-	secChUaVersion = `"152.0.7977.64"`
+	UserAgent      = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36"
+	secChUa        = `"Google Chrome";v="155", "Chromium";v="155", "Not(A:Brand";v="24"`
+	secChUaFull    = `"Google Chrome";v="155.0.8059.39", "Chromium";v="155.0.8059.39", "Not(A:Brand";v="24.0.0.0"`
+	secChUaVersion = `"155.0.8059.39"`
 	platform       = `"Windows"`
-	acceptDocument = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"
-	acceptImage    = "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
+	acceptDocument = "text/html,application/xhtml+xml,application/xml;q=0.9,image/jxl,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"
+	acceptImage    = "image/jxl,image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
 	acceptEncoding = "gzip, deflate, br, zstd"
 )
 
@@ -312,6 +314,44 @@ func KasadaTL(acceptLanguage string, kasada map[string]string, origin, referer s
 		{"accept-language", acceptLanguage},
 		{"priority", "u=1, i"},
 	}.With(kasada)
+}
+
+// ImpervaScript is the reese84 script, which the challenge page adds as an
+// async script; Chrome sends no priority header for it.
+func ImpervaScript(acceptLanguage, referer string) Headers {
+	return Headers{
+		{"sec-ch-ua-platform", platform},
+		{"user-agent", UserAgent},
+		{"sec-ch-ua", secChUa},
+		{"sec-ch-ua-mobile", "?0"},
+		{"accept", "*/*"},
+		{"sec-fetch-site", "same-origin"},
+		{"sec-fetch-mode", "no-cors"},
+		{"sec-fetch-dest", "script"},
+		{"referer", referer},
+		{"accept-encoding", acceptEncoding},
+		{"accept-language", acceptLanguage},
+	}
+}
+
+// ImpervaPost is the reese84 POST; the script sets accept and content-type.
+func ImpervaPost(acceptLanguage, origin, referer string) Headers {
+	return Headers{
+		{"sec-ch-ua-platform", platform},
+		{"user-agent", UserAgent},
+		{"accept", "application/json; charset=utf-8"},
+		{"sec-ch-ua", secChUa},
+		{"content-type", "text/plain; charset=utf-8"},
+		{"sec-ch-ua-mobile", "?0"},
+		{"origin", origin},
+		{"sec-fetch-site", "same-origin"},
+		{"sec-fetch-mode", "cors"},
+		{"sec-fetch-dest", "empty"},
+		{"referer", referer},
+		{"accept-encoding", acceptEncoding},
+		{"accept-language", acceptLanguage},
+		{"priority", "u=1, i"},
+	}
 }
 
 // ChallengeScript is the Cloudflare challenge script. The challenge page

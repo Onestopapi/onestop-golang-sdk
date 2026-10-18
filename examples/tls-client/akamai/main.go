@@ -16,7 +16,7 @@ import (
 
 const (
 	apiKey         = "YOUR_API_KEY"
-	identifier     = "" // your identifier or account name
+	identifier     = "YOUR_IDENTIFIER" // your identifier or account name
 	pageURL        = "https://www.example.com/"
 	acceptLanguage = "en-US,en;q=0.9"
 
@@ -134,8 +134,8 @@ func postSensors(hc *httpclient.Client, session onestop.Session, page *httpclien
 		if post.Status != 200 && post.Status != 201 {
 			log.Fatalf("FAIL sensor POST returned %d", post.Status)
 		}
-		// Accepted: _abck contains ~0~ or the reply is the 17-byte ack.
-		if strings.Contains(hc.Cookie(page.URL, "_abck"), "~0~") || len(post.Body) == 17 {
+		// Accepted: _abck contains ~0~ or the reply is exactly {"success": true}.
+		if strings.Contains(hc.Cookie(page.URL, "_abck"), "~0~") || post.Body == `{"success": true}` {
 			return
 		}
 		if n == 8 {

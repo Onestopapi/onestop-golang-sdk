@@ -19,7 +19,7 @@ import (
 
 const (
 	apiKey         = "YOUR_API_KEY"
-	identifier     = "" // your identifier or account name
+	identifier     = "YOUR_IDENTIFIER" // your identifier or account name
 	pageURL        = "https://www.example.com/"
 	acceptLanguage = "en-US,en;q=0.9"
 
@@ -53,11 +53,11 @@ type interstitialReply struct {
 func main() {
 	hc := httpclient.New(proxy)
 	client, ip := newClient()
-	session := newSession(client, ip, pageURL)
 	page, dd := getBlockedPage(hc)
-	geoURL, geo := getChallengePage(hc, dd)
+	session := newSession(client, ip, page.URL)
+	geoURL, geo := getChallengePage(hc, page, dd)
 	solveInterstitial(hc, session, page, geoURL, geo)
-	status := reloadPage(hc)
+	status := reloadPage(hc, page)
 	siteFirewall(hc, pageURL)
 	fmt.Println("PASS interstitial view redirect, page re-GET", status)
 }
@@ -104,9 +104,9 @@ func getBlockedPage(hc *httpclient.Client) (*httpclient.Response, challenge) {
 	return page, dd
 }
 
-func getChallengePage(hc *httpclient.Client, dd challenge) (string, *httpclient.Response) {
+func getChallengePage(hc *httpclient.Client, page *httpclient.Response, dd challenge) (string, *httpclient.Response) {
 	geoURL := fmt.Sprintf("%s/interstitial/?initialCid=%s&hash=%s&cid=%s&referer=%s&s=%d",
-		geoOrigin, url.QueryEscape(dd.CID), url.QueryEscape(dd.Hash), url.QueryEscape(dd.Cookie), url.QueryEscape(pageURL), dd.S)
+		geoOrigin, url.QueryEscape(dd.CID), url.QueryEscape(dd.Hash), url.QueryEscape(dd.Cookie), url.QueryEscape(page.URL), dd.S)
 	if dd.E != "" {
 		geoURL += "&e=" + url.QueryEscape(dd.E)
 	}
@@ -114,7 +114,7 @@ func getChallengePage(hc *httpclient.Client, dd challenge) (string, *httpclient.
 
 	// These pauses are browser pacing between the challenge requests, not the API's sleep.
 	time.Sleep(400 * time.Millisecond)
-	geo := hc.Get(geoURL, httpclient.Frame(acceptLanguage, "cross-site", pageURL).StorageAccess())
+	geo := hc.Get(geoURL, httpclient.Frame(acceptLanguage, "cross-site", page.URL).StorageAccess())
 	if geo.Status != 200 {
 		log.Fatalf("FAIL interstitial page returned %d", geo.Status)
 	}
@@ -155,8 +155,8 @@ func solveInterstitial(hc *httpclient.Client, session onestop.Session, page *htt
 	hc.SetCookie(cookie.Domain, cookie.Name, cookie.Value)
 }
 
-func reloadPage(hc *httpclient.Client) int {
-	again := hc.Get(pageURL, httpclient.Navigate(acceptLanguage, pageURL))
+func reloadPage(hc *httpclient.Client, page *httpclient.Response) int {
+	again := hc.Get(page.URL, httpclient.Navigate(acceptLanguage, page.URL))
 	if again.Status != 200 && again.Status != 302 {
 		log.Fatalf("FAIL page re-GET returned %d", again.Status)
 	}

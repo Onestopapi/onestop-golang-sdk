@@ -4,7 +4,16 @@ Guidance for AI coding assistants using the OneStop Antibot SDK. Working program
 
 ## Rules
 
-1. **Headers and header order matter.** Send the headers a real browser sends for each request type (page, script, XHR/POST), in the same order. Check them against your browser on your site, and set the order explicitly so your HTTP client doesn't add, drop or reorder headers. The examples' header sets are in `examples/<client>/httpclient/httpclient.go`; its `Do` sets the order like this:
+1. **One identity per session.** Create one `client.Session(onestop.Session{...})` per browser identity. Use the same `UserAgent`, `AcceptLanguage`, `Site`, `Referer` and `IP` for every call in it. `Site` is the page URL after redirects; `IP` is the proxy's exit IP (`client.GetIP()` with `Config.IPHTTPClient` going through the same proxy).
+2. **Pass context back.** Send the `Context` from the previous response on the next call of the same flow; never share it across sessions or keys (a context is tied to the API key and sub-key; another key gets 400 `Invalid context.`). Akamai sensor and SBSD send `Script` only on the first call; once you have a `Context`, send the `Context` and not the `Script`. Pixel is different: send `HTML` and `Script` on every call; it returns no `Context`. DataDome uses one context for tags, interstitial and slider in the same session.
+3. **Errors fail loud.** Don't retry blindly or invent fallback values. Log the error, including its `RequestID` (`*onestop.APIError`), which support needs.
+4. **The SDK waits `Sleep` for you.** Don't add your own wait for it (see Setup).
+5. **Some sites (DataDome, Akamai) are strict on flow.** Make the requests a real browser makes, in order; you may need extra requests beyond the solve. Put your site's own requests in `siteFirewall` in the examples.
+
+## Debugging basics
+
+1. **Headers.** Send the exact set of headers the browser sends for each request type (page, script, XHR/fetch POST, form POST, image).
+2. **Header order.** Take a browser recording (DevTools, powhttp, Charles) of every request you make, copy its header names, values and order exactly, and set that order explicitly in your client. The examples' header sets (`examples/<client>/httpclient/httpclient.go`) are from one recording and only show how to set them; don't reuse their values. The wrapper's `Do` sets the order like this:
 
    ```go
    // tls-client
@@ -20,13 +29,19 @@ Guidance for AI coding assistants using the OneStop Antibot SDK. Working program
        HeaderOrder: []string{"user-agent", "accept"},
    }
    ```
-2. **Match the site's region.** Use a proxy in the site's country and an `AcceptLanguage` for that country, the way an ordinary visitor would. A `.de` site gets a German proxy and `de-DE,de;q=0.9`.
-3. **`sec-ch-ua` headers must be accurate.** When you present as Chromium, `sec-ch-ua`, `sec-ch-ua-mobile`, `sec-ch-ua-platform` (and the full-version hints when sent) must match the User-Agent's browser, version and platform exactly.
-4. **One identity per session.** Create one `client.Session(onestop.Session{...})` per browser identity. Use the same `UserAgent`, `AcceptLanguage`, `Site` and `Referer` for every call in it. Set `IP` to the proxy's exit IP (`client.GetIP()` with `Config.IPHTTPClient` going through the same proxy).
-5. **Pass context back.** Send the `Context` from the previous response on the next call of the same flow, and never share it across sessions. Akamai sends the `Script` only on the first call. DataDome uses one context for tags, interstitial and slider in the same session.
-6. **Use a TLS client that impersonates the browser** (as in `examples/`). A default HTTP client's TLS/HTTP2 fingerprint gets blocked.
-7. **Errors fail loud.** Don't retry blindly or invent fallback values. Log the error, including its `RequestID` (`*onestop.APIError`), which support needs.
-8. **Some sites (DataDome, Akamai) are strict on flow.** Make the requests a real browser makes, in order; you may need extra requests beyond the solve. Put your site's own requests in `siteFirewall` in the examples.
+
+   DevTools' "Disable cache" adds `pragma: no-cache` and `cache-control: no-cache` to every request; Chrome doesn't send them on a normal visit. Record with it off, or leave those two out (the examples include them on the Akamai and SBSD requests because they came from such a recording).
+3. **Third-party cookies.** The browser may have third-party cookies your script lacks; check the recording for them.
+4. **Missing requests.** Pages, scripts and calls the browser makes before the challenge can set the antibot's cookies; make them too.
+5. **`sec-ch-*` hints.** `sec-ch-ua`, `sec-ch-ua-mobile`, `sec-ch-ua-platform` (and the full-version hints when sent) must match the User-Agent's browser, version and platform. Only Chromium sends them; Firefox and Safari don't.
+6. **Accept-Language.** Send the real value that browser engine sends in the site's region (a `.de` site gets a real German Chrome value, such as `de-DE,de;q=0.9`), with a proxy in that country.
+7. **IP.** An IP from the site's region gives the most consistent rates.
+8. **User-Agent.** Use the latest Chrome User-Agent, a few days after each Chrome release.
+9. **TLS.** Use a client that impersonates Chrome's TLS and HTTP/2, with the newest Chrome profile the library has (as in `examples/`). Keep the User-Agent and `sec-ch-ua` on the latest Chrome even when that profile is older (e.g. a Chrome 155 User-Agent with tls-client's `profiles.Chrome_152_PSK`); don't downgrade them to match. When the library ships a newer profile, update it and switch. A default HTTP client's TLS/HTTP2 fingerprint gets blocked.
+10. **Timing.** The time between your requests matters. It is separate from the API's `Sleep`, which the SDK handles.
+11. **Compare with a passing recording.** Record a browser that passes (HAR) on the same OS and User-Agent, and compare your requests with it one by one.
+
+With the OneStop MCP connected, use its debugging guide for a step-by-step walkthrough.
 
 ## API reference
 
@@ -46,6 +61,8 @@ Client: `client, err := onestop.New(onestop.Config{...})` (import `github.com/On
 
 Also optional: `Endpoint`, `Compression` (`zstd` default, `gzip`, `identity`), `Timeout` (`time.Duration` per call, default 60 s), `HTTPClient` (API transport), `Defaults` (session values merged into every session).
 
+Cancellation: `client.WithContext(ctx)` returns a copy of the client bound to a `context.Context`; calls from its sessions, and their `Sleep` wait, stop when `ctx` ends.
+
 Session: `session := client.Session(onestop.Session{...})`. One per browser identity. Every call sends these; keep them the same for the whole session.
 
 | Session | Value from |
@@ -56,20 +73,22 @@ Session: `session := client.Session(onestop.Session{...})`. One per browser iden
 | `AcceptLanguage` | The `Accept-Language` you send to the site, for the proxy's country. |
 | `IP` | `client.GetIP()` with `IPHTTPClient` set. |
 
+Akamai sensor, Pixel, SBSD `f` without a context, Kasada /tl, Imperva and every DataDome call need `AcceptLanguage` and `IP`; DataDome also needs `Referer`, and Akamai sensor `ScriptURL`, on every call. `IP` sets the timezone and country DataDome sees (a private IP gives no timezone).
+
 Scripts, HTML and cookies go in exactly as the site sent them. Don't base64 or re-escape them (only the DataDome slider images are base64).
 
-Errors: methods return the result or an `error`; an API failure is `*onestop.APIError` (match it with `errors.As`), with `StatusCode`, `RequestID` and `Message`. `err.Error()` reads `onestop: HTTP <status> (<requestId>): <message>`, or `onestop: HTTP <status>: <message>` when there is no request ID. Network and local errors are plain errors. The SDK never retries.
+Errors: methods return the result or an `error`; an API failure is `*onestop.APIError` (match it with `errors.As`), with `StatusCode`, `RequestID` and `Message`. `Message` is the API's message, unchanged. `err.Error()` reads `onestop: HTTP <status> (<requestId>): <message>`, or `onestop: HTTP <status>: <message>` when there is no request ID. Network and local errors are plain errors. The SDK never retries.
 
 | Status | Meaning |
 |---|---|
-| 400 | Bad input. The message names the field. |
+| 400 | Bad input: the message names the field by its API name (e.g. `akamaiRequest.scriptUrl is required`), or says the context or script is invalid (e.g. `Invalid context.`). |
 | 401 | Refused: wrong or missing key, service not enabled for the key, IP not on your allowlist, no balance, spending cap or rate limit. |
 | 500 | Generation failed. Report it with the request ID. |
 | 503 | Busy or restarting. Retry after a short wait. |
 
 Every API result has `RequestID`; the local helpers (sec-cpt and the Kasada CD header) return a plain string. Put the request ID in any report. Only a successful call is charged; Cloudflare charges once per solved challenge, not per step.
 
-Every API result also has `Sleep`: a wait in milliseconds, 0 when there is none. The SDK waits it before the call returns, so don't wait it again. Browser-like pauses between your own site requests, as some examples make, are separate and fine.
+Results carry `Sleep` (ms). The SDK waits it for you after a successful call; don't add your own wait. Only Cloudflare returns a non-zero `Sleep` today.
 
 Context: most results return `Context`. Send it back unchanged on the next call of the same flow. Never send it to another session or another product.
 
@@ -83,7 +102,7 @@ Context: most results return `Context`. Send it back unchanged on the next call 
 2. First call: `Abck`, `Bmsz`, `ScriptURL`, `Script`. No `Context`.
 3. POST `{"sensor_data": Payload}` to the script URL as `text/plain;charset=UTF-8`. The site sets a new `_abck`.
 4. Every later call: fresh `Abck` and `Bmsz`, `ScriptURL`, and `Context` from the last response. No `Script`.
-5. Repeat until `_abck` contains `~0~` or the POST reply is the 17-byte `{"success": true}`. Some sites keep `~-1~`; there the protected request passing is the proof.
+5. Repeat until `_abck` contains `~0~` or the POST reply is exactly the 17-byte `{"success": true}` (raw bytes, untrimmed). The 18-byte reply with a trailing newline is not a pass. Some sites keep `~-1~`; there the exact 17-byte reply is the signal, and the protected request passing is the final proof.
 6. A later request can reset `_abck`. Then send one more sensor with the saved `Context` and fresh cookies, and POST it.
 
 If the page also loads an SBSD script (`?v=`), run SBSD passive first, in the same session.
@@ -131,15 +150,15 @@ Passive:
 | `Script` | Mode `f` | The SBSD script's source. |
 | `Context` | Passive mode `t` | `Context` from the f response. |
 
-Returns `Payload` (POST it as `{"body": Payload}`) and `Context` (passive: send it on the t call; block: not needed). The block token is not an API field; it only goes on your POST URL.
+Returns `Payload` (POST it as `{"body": Payload}`) and `Context` (`f` and `t` both return one; passive: send the f one on the t call; block: not needed). `UserAgent` is required on every call, `t` included. A `Script` under 1,000 bytes, or an HTML page, gets a 400. The block token is not an API field; it only goes on your POST URL.
 
-Context: the f context goes only to the t call for the same script. The block takes one call and no context.
+Context: the f context goes only to the t call for the same script. The block takes one call and needs no context.
 
 Example: `examples/<client>/sbsd/main.go` (block, then passive), `examples/<client>/akamai/main.go` (passive).
 
 #### Pixel
 
-`session.Pixel(onestop.PixelCall{...})` returns `*onestop.PixelResponse, error`.
+`session.Pixel(onestop.PixelCall{...})` returns `*onestop.AkamaiResponse, error`.
 
 1. GET the page. The Pixel script is the `<script src>` at `/akam/13/<key>` (not the one starting `pixel_`). GET it.
 2. Call with the page HTML and the script, unchanged.
@@ -147,13 +166,12 @@ Example: `examples/<client>/sbsd/main.go` (block, then passive), `examples/<clie
 
 | Field | When | Value from |
 |---|---|---|
-| `HTML` | Every call | The page HTML, unchanged. The API reads the Pixel values from it and the script. |
+| `HTML` | Every call | The page HTML, unchanged. The API reads the Pixel id and value from it and the script each time. |
 | `Script` | Every call | The Pixel script's source, unchanged. |
-| `Context` | If returned | `Context` from the previous Pixel response, when it had one. |
 
-Returns `Payload` (the whole form body, already encoded; POST it as is) and `Context` (usually empty). A page or script without the Pixel values gets a 400 naming what's missing.
+Returns `Payload` only (the whole form body, already encoded; POST it as is). A page or script without the Pixel values gets a 400 naming what's missing.
 
-Context: send a non-empty `Context` back on the next Pixel call only.
+Context: none. Send `HTML` and `Script` on every call.
 
 #### sec-cpt (crypto and adaptive challenge)
 
@@ -190,7 +208,7 @@ A blocked page answers 403 with `var dd={...}` in the HTML (spacing around `=` v
 
 #### DataDome tags
 
-`session.DatadomeTags(onestop.DatadomeTagsCall{...})` returns `*onestop.DatadomeTagsResponse, error`.
+`session.DatadomeTags(onestop.DatadomeTagsCall{...})` returns `*onestop.DatadomeResponse, error`.
 
 1. `ch`: `Event` `ch`, `SiteKey`, `Version`, `Cookie`. No `Context` on the session's first DataDome call.
 2. POST `Payload` to the `/js/` endpoint tags.js posts to, usually `https://api-js.datadome.co/js/`, as `application/x-www-form-urlencoded`. The JSON reply has the new cookie in `cookie`.
@@ -210,7 +228,7 @@ Context: one DataDome context per session, shared by tags, interstitial and slid
 
 #### DataDome interstitial
 
-`session.DatadomeInterstitial(onestop.DatadomeInterstitialCall{...})` returns `*onestop.DatadomeInterstitialResponse, error`.
+`session.DatadomeInterstitial(onestop.DatadomeInterstitialCall{...})` returns `*onestop.DatadomeResponse, error`.
 
 1. GET the page: 403 with the `dd` object, `rt` `i`. `t` equal to `bv` is a hard block: stop.
 2. Build `https://geo.captcha-delivery.com/interstitial/?initialCid=<cid>&hash=<hsh>&cid=<cookie>&referer=<page URL>&s=<s>&e=<e>&b=<b>&dm=cd` from it, in this order. URL-encode each value; leave out `&e=` when `e` is empty.
@@ -234,7 +252,7 @@ Example: `examples/<client>/datadome_interstitial/main.go`
 
 #### DataDome slider
 
-`session.DatadomeSlider(onestop.DatadomeSliderCall{...})` returns `*onestop.DatadomeSliderResponse, error`.
+`session.DatadomeSlider(onestop.DatadomeSliderCall{...})` returns `*onestop.DatadomeResponse, error`.
 
 1. GET the page: 403 with the `dd` object, `rt` `c`. `t` equal to `bv` is a hard block: stop.
 2. Build `https://geo.captcha-delivery.com/captcha/?initialCid=<cid>&hash=<hsh>&cid=<cookie>&t=<t>&referer=<page URL>&s=<s>&e=<e>&dm=cd` from it, in this order. URL-encode each value; leave out `&e=` when `e` is empty.
@@ -270,10 +288,10 @@ The loop (WAF, Turnstile, precursor interstitial): make each entry in `Requests`
 
 | `Purpose` | Send back on the next call |
 |---|---|
-| `challenge` | Its response body as `Response` (a `string`). |
+| `challenge` | Its response body as `Response`, a `string` (challenge data is a string; only precursor minimal replies are JSON). |
 | `iframe` | Its HTML as `HTML`, its final URL as `IframeURL`, its `cf-ray` header as `BytecodeRayID`. |
 | `image` | The image size as `ImageWidth` and `ImageHeight` (`*int`: `onestop.Ptr(n)`). |
-| `pat` | Its HTTP status as `PatStatus` (`*int`: `onestop.Ptr(n)`). A 4xx is normal. |
+| `pat` | Its HTTP status as `PatStatus` (`*int`: `onestop.Ptr(n)`). A 4xx is normal. `image` and `pat` come in the same response: send all three values together on the next call, each above 0. |
 | `form` | Nothing. POST it without following redirects, with the origin and referer it carries: its response is the cleared page and sets `cf_clearance`. |
 
 #### Cloudflare step
@@ -322,8 +340,8 @@ Example: `examples/<client>/cloudflare_waf/main.go`
 | `IframeURL` | First call | The iframe's final URL, after redirects. |
 | `BytecodeRayID` | First call | The iframe response's `cf-ray` header. |
 | `ScriptURL` | First call | The api.js URL after its redirect. |
-| `Action` | Every call, if set | The widget's `action` from the page. |
-| `CData` | Every call, if set | The widget's `cData` from the page. |
+| `Action` | First call only, if the page sets it | The widget's `action` from the page. |
+| `CData` | First call only, if the page sets it | The widget's `cData` from the page. |
 | `Context` + loop fields | Later calls | `Context` from the previous response, plus the fields from the loop table. |
 
 Returns `Requests`, `Context`, and `Token` once solved. Use the token where the site expects the Turnstile response.
@@ -346,16 +364,16 @@ Example: `examples/<client>/cloudflare_turnstile/main.go`
 | `Script` | Every call | The `main.js` source. |
 | `RayID` | Every call | The page response's `cf-ray` header, not the script's. |
 
-Returns `Requests` (one `challenge` POST).
+Returns `Requests` (one `challenge` POST). A `Context` comes back; you don't need to send it anywhere.
 
-Context: none. One call per page.
+Context: not needed. One call per page.
 
 #### Cloudflare precursor interstitial
 
 `session.CloudflarePrecursor(onestop.CloudflareCall{...})` returns `*onestop.CloudflareResponse, error`.
 
 1. GET the page. It answers 403 with a challenge page like WAF's, but its `cType` is `precursor_interstitial`. The script is the path in `src = '...'`, on the page's origin. GET it.
-2. First call: `HTML`, `Script`, `ScriptURL`.
+2. First call: `HTML`, `Script`, `ScriptURL`. `Site` and `UserAgent` must stay the same for every call.
 3. Run the loop.
 4. Stop at the `form` request: POST it without following redirects.
 
@@ -374,11 +392,11 @@ Context: each step returns the context for the next. A Cloudflare context only g
 
 `session.CloudflarePrecursor(onestop.CloudflareCall{...})` returns `*onestop.CloudflareResponse, error`.
 
-1. GET the page (200, a normal page). The script is the `src` containing `/scripts/precursor/`. GET it from the same origin.
-2. First call: `HTML`, `Script`, `ScriptURL` (the script's final URL).
+1. GET the page (200, a normal page). The script is the `src` containing `/scripts/precursor/`; it must be on the page's origin. GET it.
+2. First call: `HTML`, `Script`, `ScriptURL` (the script's final URL). `Site` and `UserAgent` must stay the same for every call.
 3. POST each request as `text/plain;charset=UTF-8` with its headers. Each reply is JSON like `{"i":60,"n":false}`.
-4. Stop when `n` is true, or after five POSTs. A long `i` comes back as the next result's `Sleep`, which the SDK waits.
-5. Otherwise call again with `Context` and the reply as `Response`, as a JSON object, not a string (`json.RawMessage(body)`).
+4. The API sends no stop signal and has no POST limit: stop when `n` is true; any cap on POSTs is your own choice. A reply's `i` of 30 s or more comes back as `Sleep` (`i` × 1000 ms) on that call.
+5. Otherwise call again with `Context` and the reply as `Response` (`json.RawMessage(body)`). `Response` is the site's reply as a JSON object, or its JSON text; any other string isn't read as a reply.
 
 | Field | When | Value from |
 |---|---|---|
@@ -386,7 +404,7 @@ Context: each step returns the context for the next. A Cloudflare context only g
 | `Script` | First call | The precursor script's source. |
 | `ScriptURL` | First call | The precursor script's final URL. |
 | `Context` | Later calls | `Context` from the previous response. |
-| `Response` | Later calls | The last POST's JSON reply, e.g. `{"i":60,"n":false}`. |
+| `Response` | Later calls | The last POST's reply, e.g. `{"i":60,"n":false}`, as a JSON object or its JSON text. |
 
 Returns `Requests` and `Context`. Every POST answering 2xx is the pass.
 
@@ -402,7 +420,7 @@ Three steps: p.js, then /tl, then the CD header. `<base>` is `<origin>/<id>/<id>
 
 `session.KasadaPScript(script)` returns `*onestop.KasadaPScriptResponse, error`.
 
-1. GET the page. p.js is at `/<id>/<id>/p.js` on its origin (two 36-character ids; some pages write the path JSON-escaped, so replace `\/` and `\u002f` with `/` first). GET it.
+1. GET the page. p.js is at `/<id>/<id>/p.js` on its origin (two 36-character ids; some pages write the path JSON-escaped, so replace `\/` and `\u002f` with `/` first). GET it. Some sites load p.js from their own JS (e.g. `KPSDK.configure`) with no marker in the HTML: take its path from a recording.
 2. Call with its source.
 3. Send `x-kpsdk-v` from `Headers` on your Kasada requests. Keep the result (`ps` below) for the CD header; reuse it until `CacheLifetimeSeconds` runs out.
 
@@ -420,7 +438,7 @@ Example: `examples/<client>/kasada/main.go` (p.js and /tl, or the 429 block page
 
 `session.KasadaTL(scriptURL, script)` returns `*onestop.KasadaResponse, error`.
 
-1. GET `<base>mfc` with `x-kpsdk-v` and `x-kpsdk-h: 01`.
+1. GET `<base>mfc` with `x-kpsdk-v` and `x-kpsdk-h: 01`. Keep the `x-kpsdk-h` value the `mfc` response returns; the protected requests carry it.
 2. GET `<base>fp?x-kpsdk-v=<v>`. It answers 429 and its body links ips.js: take that `<script src>`, HTML-unescape it (`&amp;` to `&`) and resolve it against the fp URL. No ips.js `src` in the fp body is a failure.
 3. GET that ips.js URL, with the fp URL as referer.
 4. Call with that full URL and the ips.js source.
@@ -434,7 +452,7 @@ Example: `examples/<client>/kasada/main.go` (p.js and /tl, or the 429 block page
 
 If the page itself answers 429 with an ips.js `<script src>`, it is the block page: take its ips.js URL the same way, resolved against the page URL. Skip p.js, mfc and fp, and send the page URL as referer for ips.js and /tl. `<base>` is then the ips.js URL's directory. The CD header still needs a p.js result.
 
-Returns `Payload` (the /tl body, base64; decode it before sending) and `Headers` (the `x-kpsdk-*` headers for the /tl POST; send them all).
+Returns `Payload` (the /tl body, base64; decode it before sending) and `Headers` (`x-kpsdk-ct`, `x-kpsdk-dt`, `x-kpsdk-im`, `x-kpsdk-v`, and `x-kpsdk-dv` for mobile apps; send them all on the /tl POST). No context.
 
 Context: none. Each /tl call stands alone.
 
@@ -446,7 +464,7 @@ Example: `examples/<client>/kasada/main.go`
 
 1. After the /tl POST, take `x-kpsdk-ct` and `x-kpsdk-st` from its response.
 2. Call it on `ps`, the p.js result, with them. The SDK fills in the current time.
-3. Send the value as `x-kpsdk-cd`, with `x-kpsdk-ct`, on the protected request.
+3. Send a fresh value as `x-kpsdk-cd` on each protected request that changes data (usually the POSTs; copy which ones from the recording). Every protected request carries `x-kpsdk-ct`, `x-kpsdk-v` and the `x-kpsdk-h` from `mfc`.
 
 | Field | When | Value from |
 |---|---|---|
@@ -456,3 +474,28 @@ Example: `examples/<client>/kasada/main.go`
 Returns the header value. Runs locally: no API call, no charge. Bad inputs fail with a `kasada:` error. For mobile apps, `onestop.KasadaCDHeader(onestop.KasadaCDCall{...})` takes every input.
 
 Context: none. Use a p.js result from this session that hasn't expired.
+
+Example: `examples/<client>/kasada/main.go` (after /tl, builds `x-kpsdk-cd` locally from `x-kpsdk-ct` and `x-kpsdk-st`, and sends it with `x-kpsdk-ct`, `x-kpsdk-v` and the `x-kpsdk-h` from `mfc` on one protected POST).
+
+### Imperva
+
+#### Imperva reese84
+
+`session.Imperva(scriptURL, script)` returns `*onestop.ImpervaResponse, error`.
+
+1. GET the page. The challenge page adds the reese84 script with `scriptElement.src = "..."`, a path on the page's origin (often `/<words>/<id>?s=<id>`). Resolve it against the page URL and GET it, with the page URL as referer. It is an async script: Chrome sends no `priority` header for it.
+2. Call with that full script URL and the script's source. The session's `Site` is the page URL, after redirects; its `Referer` is the referer you send on the POST, the page URL.
+3. POST `Payload` unchanged to the script's path with `?d=<host>` in place of its query (`<host>` is the page's host), as `text/plain; charset=utf-8` with `accept: application/json; charset=utf-8`, the page's origin as `origin` and the page URL as referer.
+4. The JSON reply has `token` and `cookieDomain`. Store `token` as the `reese84` cookie on `cookieDomain`.
+5. GET the page again. It answers 200 without the challenge script.
+
+| Field | When | Value from |
+|---|---|---|
+| `scriptURL` | Every call | The full script URL you fetched, its `?s=` query included. |
+| `script` | Every call | The script's source, unchanged. |
+
+Returns `Payload` (the whole POST body, a JSON document; send it as is).
+
+Context: none. Each call stands alone.
+
+Example: `examples/<client>/imperva/main.go`
