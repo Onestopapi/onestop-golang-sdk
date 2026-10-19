@@ -107,6 +107,13 @@ type impervaWire struct {
 	Script    string `json:"script"`
 }
 
+type impervaUtmvcWire struct {
+	datadomeIdentity
+	ScriptURL           string                 `json:"scriptUrl"`
+	Script              string                 `json:"script"`
+	IncapSessionCookies []ImpervaSessionCookie `json:"incapSessionCookies"`
+}
+
 type envelope struct {
 	Success bool   `json:"success"`
 	Error   string `json:"error"`

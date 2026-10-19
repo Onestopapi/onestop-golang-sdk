@@ -146,6 +146,22 @@ func (c *Client) Cookie(rawURL string, names ...string) string {
 	return ""
 }
 
+// Cookies returns the cookies the jar would send to rawURL whose name starts
+// with prefix, in browser order: longer path first, then oldest first.
+func (c *Client) Cookies(rawURL, prefix string) []onestop.ImpervaSessionCookie {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		log.Fatal(err)
+	}
+	var out []onestop.ImpervaSessionCookie
+	for _, cookie := range c.client.GetCookies(u) {
+		if strings.HasPrefix(cookie.Name, prefix) {
+			out = append(out, onestop.ImpervaSessionCookie{Name: cookie.Name, Value: cookie.Value})
+		}
+	}
+	return out
+}
+
 // SetCookie stores a cookie for domain and its subdomains.
 func (c *Client) SetCookie(domain, name, value string) {
 	u := &url.URL{Scheme: "https", Host: strings.TrimPrefix(domain, "."), Path: "/"}

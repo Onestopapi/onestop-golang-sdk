@@ -80,6 +80,13 @@ type CloudflareCall struct {
 	CData         string `json:"cData,omitempty"`
 }
 
+// ImpervaSessionCookie is one incap_ses_* cookie of the page host, with its
+// exact value, for ImpervaUtmvc.
+type ImpervaSessionCookie struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
 // AkamaiResponse is returned by AkamaiSensor, Pixel and Bmp.
 type AkamaiResponse struct {
 	Payload string `json:"payload"`
@@ -150,7 +157,8 @@ type KasadaResponse struct {
 	Meta
 }
 
-// ImpervaResponse holds the reese84 POST body (JSON text); send it as is.
+// ImpervaResponse holds the reese84 POST body (JSON text), or the ___utmvc
+// cookie value; send it as is.
 type ImpervaResponse struct {
 	Payload string `json:"payload"`
 	Meta

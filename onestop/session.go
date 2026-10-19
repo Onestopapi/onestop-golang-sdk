@@ -1,5 +1,7 @@
 package onestop
 
+import "errors"
+
 // Session is the browser identity sent with every challenge call. Create it
 // with Client.Session; a zero Session is only valid as Config.Defaults or
 // Client.Session input.
@@ -92,4 +94,13 @@ func (s Session) KasadaTL(scriptURL, script string) (*KasadaResponse, error) {
 // Imperva generates the reese84 POST body from the challenge script's URL and raw source.
 func (s Session) Imperva(scriptURL, script string) (*ImpervaResponse, error) {
 	return generate[ImpervaResponse](s, "Imperva", "imperva", impervaWire{s.datadomeIdentity(), scriptURL, script})
+}
+
+// ImpervaUtmvc generates the ___utmvc cookie value from the utmvc script's URL
+// and raw source and the page host's incap_ses_* cookies, in browser cookie order.
+func (s Session) ImpervaUtmvc(scriptURL, script string, cookies []ImpervaSessionCookie) (*ImpervaResponse, error) {
+	if len(cookies) == 0 {
+		return nil, errors.New("onestop: cookies is required: the page's incap_ses_* cookies")
+	}
+	return generate[ImpervaResponse](s, "Imperva", "imperva", impervaUtmvcWire{s.datadomeIdentity(), scriptURL, script, cookies})
 }

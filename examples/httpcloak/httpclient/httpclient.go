@@ -7,6 +7,7 @@ package httpclient
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"html"
 	"log"
@@ -140,6 +141,61 @@ func (c *Client) Cookie(rawURL string, names ...string) string {
 		}
 	}
 	return ""
+}
+
+// Cookies returns the cookies stored for rawURL whose name starts with prefix,
+// in browser order: longer path first, then oldest first. GetCookies sorts by
+// name, so the order comes from the session export, which keeps each cookie's
+// creation time and creation order.
+func (c *Client) Cookies(rawURL, prefix string) []onestop.ImpervaSessionCookie {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		log.Fatal(err)
+	}
+	data, err := c.session.Marshal()
+	if err != nil {
+		log.Fatal(err)
+	}
+	var export struct {
+		Cookies map[string][]exportedCookie `json:"cookies"`
+	}
+	if err := json.Unmarshal(data, &export); err != nil {
+		log.Fatal(err)
+	}
+	path := u.EscapedPath()
+	if path == "" {
+		path = "/"
+	}
+	var matched []exportedCookie
+	for _, cookies := range export.Cookies {
+		for _, cookie := range cookies {
+			domain := strings.TrimPrefix(cookie.Domain, ".")
+			if strings.HasPrefix(cookie.Name, prefix) && (u.Hostname() == domain || strings.HasSuffix(u.Hostname(), "."+domain)) && strings.HasPrefix(path, cookie.Path) {
+				matched = append(matched, cookie)
+			}
+		}
+	}
+	sort.SliceStable(matched, func(i, j int) bool {
+		if len(matched[i].Path) != len(matched[j].Path) {
+			return len(matched[i].Path) > len(matched[j].Path)
+		}
+		return matched[i].CreatedAt.Before(matched[j].CreatedAt)
+	})
+	out := make([]onestop.ImpervaSessionCookie, len(matched))
+	for i, cookie := range matched {
+		out[i] = onestop.ImpervaSessionCookie{Name: cookie.Name, Value: cookie.Value}
+	}
+	return out
+}
+
+// exportedCookie is one cookie of Session.Marshal's "cookies", which lists each
+// host's cookies in creation order.
+type exportedCookie struct {
+	Name      string    `json:"name"`
+	Value     string    `json:"value"`
+	Domain    string    `json:"domain"`
+	Path      string    `json:"path"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // SetCookie stores a cookie for domain and its subdomains.
