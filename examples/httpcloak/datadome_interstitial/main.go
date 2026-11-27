@@ -132,9 +132,10 @@ func solveInterstitial(hc *httpclient.Client, session onestop.Session, page *htt
 	time.Sleep(400 * time.Millisecond)
 	// Script and HTML are the interstitial's; PageResponse is the blocked page.
 	res, err := session.DatadomeInterstitial(onestop.DatadomeInterstitialCall{
-		Script:       script,
-		HTML:         geo.Body,
-		PageResponse: page.Body,
+		InterstitialBlockURL: geoURL,
+		Script:               script,
+		HTML:                 geo.Body,
+		PageResponse:         page.Body,
 	})
 	if err != nil {
 		log.Fatalf("FAIL interstitial: %v", err)

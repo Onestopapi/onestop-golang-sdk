@@ -121,9 +121,10 @@ func getChallengePage(hc *httpclient.Client, page *httpclient.Response, dd chall
 
 func solveSlider(hc *httpclient.Client, session onestop.Session, page *httpclient.Response, geoURL string, geo *httpclient.Response) {
 	// Without a script tag the bundle is inline and the API reads it from HTML.
-	var script string
+	var script, scriptURL string
 	if match := captchaScript.FindStringSubmatch(geo.Body); match != nil {
-		script = hc.Get(match[1], httpclient.Script(acceptLanguage, "same-site", geoOrigin+"/").StorageAccess()).Body
+		scriptURL = geo.Resolve(match[1]).String()
+		script = hc.Get(scriptURL, httpclient.Script(acceptLanguage, "same-site", geoOrigin+"/").StorageAccess()).Body
 	}
 
 	// The background is captchaChallengePath (.jpg); the puzzle piece is the
@@ -140,6 +141,8 @@ func solveSlider(hc *httpclient.Client, session onestop.Session, page *httpclien
 
 	// Script and HTML are the captcha page's; PageResponse is the blocked page.
 	res, err := session.DatadomeSlider(onestop.DatadomeSliderCall{
+		CaptchaPageURL:  geoURL,
+		ScriptURL:       scriptURL,
 		Script:          script,
 		HTML:            geo.Body,
 		PageResponse:    page.Body,

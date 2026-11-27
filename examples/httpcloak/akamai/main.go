@@ -21,6 +21,8 @@ const (
 	acceptLanguage = "en-US,en;q=0.9"
 
 	proxy = "" // your proxy, in the site's country
+
+	maxSensors = 6
 )
 
 var (
@@ -87,7 +89,11 @@ func findScripts(page *httpclient.Response) (sensorURL, sbsdURL *url.URL) {
 	if page.Status != 200 || sensorMatch == nil || sbsdMatch == nil {
 		log.Fatalf("FAIL homepage returned %d without the sensor and SBSD scripts", page.Status)
 	}
-	return page.Resolve(sensorMatch[1]), page.Resolve(sbsdMatch[1])
+	sbsdURL = page.Resolve(sbsdMatch[1])
+	if sbsdURL.Query().Get("t") != "" {
+		log.Fatal("FAIL SBSD script has t=: a block page, see the sbsd example")
+	}
+	return page.Resolve(sensorMatch[1]), sbsdURL
 }
 
 func getScripts(hc *httpclient.Client, page *httpclient.Response, sensorURL, sbsdURL *url.URL) (sensor, sbsd string) {
@@ -138,8 +144,8 @@ func postSensors(hc *httpclient.Client, session onestop.Session, page *httpclien
 		if strings.Contains(hc.Cookie(page.URL, "_abck"), "~0~") || post.Body == `{"success": true}` {
 			return
 		}
-		if n == 8 {
-			log.Fatal("FAIL sensor not accepted after 8 POSTs")
+		if n == maxSensors {
+			log.Fatalf("FAIL sensor not accepted after %d POSTs", maxSensors)
 		}
 		call = onestop.AkamaiSensorCall{ScriptURL: sensorURL.String(), Context: res.Context}
 	}

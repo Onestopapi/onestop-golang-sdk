@@ -45,15 +45,18 @@ type DatadomeTagsCall struct {
 }
 
 type DatadomeInterstitialCall struct {
-	Script       string `json:"script"`
-	HTML         string `json:"html"`
-	PageResponse string `json:"pageResponse"`
-	Context      string `json:"context,omitempty"`
+	InterstitialBlockURL string `json:"interstitialBlockUrl,omitempty"`
+	Script               string `json:"script"`
+	HTML                 string `json:"html"`
+	PageResponse         string `json:"pageResponse"`
+	Context              string `json:"context,omitempty"`
 }
 
 // DatadomeSliderCall holds the inputs for DatadomeSlider. BackgroundImage and
 // PuzzlePiece are base64.
 type DatadomeSliderCall struct {
+	CaptchaPageURL  string `json:"captchaPageUrl,omitempty"`
+	ScriptURL       string `json:"scriptUrl,omitempty"`
 	Script          string `json:"script"`
 	HTML            string `json:"html"`
 	PageResponse    string `json:"pageResponse"`

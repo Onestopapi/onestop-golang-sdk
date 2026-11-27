@@ -31,7 +31,7 @@ Guidance for AI coding assistants using the OneStop Antibot SDK. Working program
    ```
 
    DevTools' "Disable cache" adds `pragma: no-cache` and `cache-control: no-cache` to every request; Chrome doesn't send them on a normal visit. Record with it off, or leave those two out (the examples include them on the Akamai and SBSD requests because they came from such a recording).
-3. **Third-party cookies.** The browser may have third-party cookies your script lacks; check the recording for them.
+3. **Third-party cookies.** The browser may have third-party cookies your script lacks; check the recording for them. Some sites need them on Kasada's /tl POST.
 4. **Missing requests.** Pages, scripts and calls the browser makes before the challenge can set the antibot's cookies; make them too.
 5. **`sec-ch-*` hints.** `sec-ch-ua`, `sec-ch-ua-mobile`, `sec-ch-ua-platform` (and the full-version hints when sent) must match the User-Agent's browser, version and platform. Only Chromium sends them; Firefox and Safari don't.
 6. **Accept-Language.** Send the real value that browser engine sends in the site's region (a `.de` site gets a real German Chrome value, such as `de-DE,de;q=0.9`), with a proxy in that country.
@@ -102,10 +102,10 @@ Context: most results return `Context`. Send it back unchanged on the next call 
 2. First call: `Abck`, `Bmsz`, `ScriptURL`, `Script`. No `Context`.
 3. POST `{"sensor_data": Payload}` to the script URL as `text/plain;charset=UTF-8`. The site sets a new `_abck`.
 4. Every later call: fresh `Abck` and `Bmsz`, `ScriptURL`, and `Context` from the last response. No `Script`.
-5. Repeat until `_abck` contains `~0~` or the POST reply is exactly the 17-byte `{"success": true}` (raw bytes, untrimmed). The 18-byte reply with a trailing newline is not a pass. Some sites keep `~-1~`; there the exact 17-byte reply is the signal, and the protected request passing is the final proof.
+5. Stop as soon as either holds: `_abck` contains `~0~`, or the POST reply is exactly the 17-byte `{"success": true}` (raw bytes, untrimmed). Otherwise repeat, up to 6 sensor POSTs in all. The 18-byte reply with a trailing newline is not a pass. Some sites keep `~-1~`; there the exact 17-byte reply is the signal, and the protected request passing is the final proof.
 6. A later request can reset `_abck`. Then send one more sensor with the saved `Context` and fresh cookies, and POST it.
 
-If the page also loads an SBSD script (`?v=`), run SBSD passive first, in the same session.
+If the page also loads a passive SBSD script (`v=`, no `t=`), run SBSD passive first, in the same session.
 
 | Field | When | Value from |
 |---|---|---|
@@ -119,13 +119,13 @@ Returns `Payload` (POST it as `sensor_data`) and `Context` (send it on the next 
 
 Context: one chain per sensor flow, sensor calls only.
 
-Example: `examples/<client>/akamai/main.go` (SBSD passive, then the sensor loop).
+Example: `examples/<client>/akamai/main.go` (SBSD passive, then up to 6 sensors).
 
 #### SBSD (block and passive)
 
 `session.SbsdPayload(onestop.SbsdCall{...})` returns `*onestop.SbsdResponse, error`.
 
-The SBSD script is the `<script src="...?v=...">` on the page (it can carry a `nonce`). HTML-unescape its URL (`&amp;` to `&`) and resolve it against the page URL. A block page has `t=` on that URL, or holds `{"cpr_chlge":"true","t":"..."}`. Otherwise it is passive.
+The SBSD script is the `<script src="...?v=...">` on the page (it can carry a `nonce`). HTML-unescape its URL (`&amp;` to `&`) and resolve it against the page URL. Every SBSD script URL has `v=`, block and passive. `t=` on it means a block, as does a page holding `{"cpr_chlge":"true","t":"..."}`. No `t=` means passive.
 
 Block:
 
@@ -137,7 +137,7 @@ Block:
 
 Passive:
 
-1. GET the page, find the SBSD script (only `?v=`), GET it.
+1. GET the page, find the SBSD script (`v=`, no `t=`), GET it.
 2. Mode `f`: `Script`, no `Context`. POST `{"body": Payload}` as `application/json` to the script path, no query.
 3. Mode `t`: `Context` from the f response, no `Script`. POST it the same way.
 4. Both POSTs answer 200. No verdict cookie comes back.
@@ -195,7 +195,7 @@ A blocked page can come back as a challenge page with `<iframe id="sec-cpt-if" p
 
 Returns the verify POST body `{"token": "<token>", "answers": ["…"]}`, built as the challenge script builds it. Runs locally: no API call, no charge. Bad inputs fail with an `akamai:` error.
 
-Context: none. This is not the SBSD block (`sec-if-cpt-container` with a `?v=` script); that one is an SBSD call.
+Context: none. This is not the SBSD block (`sec-if-cpt-container` with a `?v=...&t=` script); that one is an SBSD call.
 
 ### DataDome
 
@@ -233,12 +233,13 @@ Context: one DataDome context per session, shared by tags, interstitial and slid
 1. GET the page: 403 with the `dd` object, `rt` `i`. `t` equal to `bv` is a hard block: stop.
 2. Build `https://geo.captcha-delivery.com/interstitial/?initialCid=<cid>&hash=<hsh>&cid=<cookie>&referer=<page URL>&s=<s>&e=<e>&b=<b>&dm=cd` from it, in this order. URL-encode each value; leave out `&e=` when `e` is empty.
 3. GET it (as an iframe), then its script: the `src` containing `interstitial.`. Some pages inline the script and have no such `src`; then skip the GET.
-4. Call with the script (empty when inlined), that page's HTML and the 403 body.
+4. Call with the script (empty when inlined), that page's HTML, the 403 body and `InterstitialBlockURL`.
 5. POST `Payload` to `https://geo.captcha-delivery.com/interstitial/` as `application/x-www-form-urlencoded; charset=UTF-8`.
 6. The JSON reply has `view: "redirect"` and a `datadome` cookie in `cookie`. Store it on its `Domain` and GET the page again (200 or 302).
 
 | Field | When | Value from |
 |---|---|---|
+| `InterstitialBlockURL` | If the block URL cannot be derived | The full interstitial iframe URL you fetched. |
 | `Script` | If the page has the script tag | The interstitial script's source. Empty when the page inlines it; the API reads it from `HTML`. |
 | `HTML` | Every call | The interstitial page HTML from geo.captcha-delivery.com. |
 | `PageResponse` | Every call | The body of the blocked (403) response that sent you there. |
@@ -257,12 +258,14 @@ Example: `examples/<client>/datadome_interstitial/main.go`
 1. GET the page: 403 with the `dd` object, `rt` `c`. `t` equal to `bv` is a hard block: stop.
 2. Build `https://geo.captcha-delivery.com/captcha/?initialCid=<cid>&hash=<hsh>&cid=<cookie>&t=<t>&referer=<page URL>&s=<s>&e=<e>&dm=cd` from it, in this order. URL-encode each value; leave out `&e=` when `e` is empty.
 3. GET it, its script (the `captcha...js` `src`; some pages inline it, then skip the GET) and both images: `captchaChallengePath` in the page is the background `.jpg`; the same path ending `.frag.png` is the piece. A relative path is on `https://geo.captcha-delivery.com`.
-4. Call with the script (empty when inlined), page HTML, the 403 body and both images in base64.
+4. Call with the script (empty when inlined), page HTML, the 403 body, both images in base64, `CaptchaPageURL` and `ScriptURL`.
 5. GET `https://geo.captcha-delivery.com/captcha/check` with `Payload` appended as is.
 6. The JSON reply has a `datadome` cookie in `cookie`. Store it on its `Domain` and GET the page again (200 or 302).
 
 | Field | When | Value from |
 |---|---|---|
+| `CaptchaPageURL` | If the captcha URL cannot be derived | The full captcha iframe URL you fetched, including after an interstitial. |
+| `ScriptURL` | If the page has the script tag | The full URL of the captcha script you fetched. |
 | `Script` | If the page has the script tag | The captcha script's source. Empty when the page inlines it; the API reads it from `HTML`. |
 | `HTML` | Every call | The captcha page HTML from geo.captcha-delivery.com. |
 | `PageResponse` | Every call | The body of the blocked (403) response that sent you there. |
@@ -442,7 +445,7 @@ Example: `examples/<client>/kasada/main.go` (p.js and /tl, or the 429 block page
 2. GET `<base>fp?x-kpsdk-v=<v>`. It can answer 200 or 429; use the response body, not the status, to find ips.js: take that `<script src>`, HTML-unescape it (`&amp;` to `&`) and resolve it against the fp URL. No ips.js `src` in the fp body is a failure.
 3. GET that ips.js URL, with the fp URL as referer.
 4. Call with that full URL and the ips.js source.
-5. Base64-decode `Payload` and POST it to `<base>tl` as `application/octet-stream`, with every header in `Headers` (`x-kpsdk-ct`, `x-kpsdk-dt`, `x-kpsdk-im`, `x-kpsdk-v`; mobile apps also get `x-kpsdk-dv`), the page's origin as `origin` and the fp URL as referer. It answers 200 with `"reload":true`.
+5. Base64-decode `Payload` and POST it to `<base>tl` as `application/octet-stream`, with every header in `Headers` (`x-kpsdk-ct`, `x-kpsdk-dt`, `x-kpsdk-im`, `x-kpsdk-v`; mobile apps also get `x-kpsdk-dv`), the page's origin as `origin`, the fp URL as referer, and the jar's cookies for the /tl URL, including any third-party cookies. Check the reply for `"reload":true`.
 6. Keep `x-kpsdk-ct` and `x-kpsdk-st` from the /tl response for the CD header.
 
 | Field | When | Value from |
