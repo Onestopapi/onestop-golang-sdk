@@ -30,7 +30,7 @@ const geoOrigin = "https://geo.captcha-delivery.com"
 
 var (
 	ddObject = regexp.MustCompile(`var\s+dd\s*=\s*(\{[^}]*\})`)
-	ddScript = regexp.MustCompile(`src="([^"]*interstitial\.[^"]*)"`)
+	ddScript = regexp.MustCompile(`(?i)<script\b[^>]*\bsrc\s*=\s*["']((?:[^"']*/)?(?:interstitial\.[^"']*|[0-9a-f]{16}\.js(?:[?#][^"']*)?))["']`)
 )
 
 type challenge struct {
@@ -126,7 +126,7 @@ func solveInterstitial(hc *httpclient.Client, session onestop.Session, page *htt
 	var script string
 	if match := ddScript.FindStringSubmatch(geo.Body); match != nil {
 		time.Sleep(200 * time.Millisecond)
-		script = hc.Get(match[1], httpclient.Script(acceptLanguage, "same-site", geoOrigin+"/").StorageAccess()).Body
+		script = hc.Get(geo.Resolve(match[1]).String(), httpclient.Script(acceptLanguage, "same-site", geoOrigin+"/").StorageAccess()).Body
 	}
 
 	time.Sleep(400 * time.Millisecond)
